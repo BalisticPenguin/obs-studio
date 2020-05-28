@@ -8,7 +8,8 @@ endif()
 set(image-source_SOURCES
 	image-source.c
 	color-source.c
-	obs-slideshow.c)
+	obs-slideshow.c
+	obs-slideshow2.c)
 
 if(WIN32)
 	set(MODULE_DESCRIPTION "OBS image module")
