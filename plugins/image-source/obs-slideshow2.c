@@ -159,6 +159,7 @@ struct slideshow2 {
 	os_event_t *cache_event;
 	pthread_t cache_thread;
 	bool cache_thread_created;
+	volatile bool shutdown;
 
 	enum behavior behavior;
 
@@ -550,7 +551,7 @@ static void *cache_thread(void *opaque)
 
 	os_set_thread_name("slideshow: cache worker thread");
 
-	while (true) {
+	while (!ss->shutdown) {
 		os_event_wait(ss->cache_event);
 
 		DARRAY_size_t old_set;
@@ -608,6 +609,8 @@ static void *cache_thread(void *opaque)
 		load_and_cache(ss, entry_index, path);
 		bfree(path);
 	}
+
+	return NULL;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1104,7 +1107,8 @@ static void ss2_destroy(void *data)
 	struct slideshow2 *ss = data;
 
 	if (ss->cache_thread_created) {
-		pthread_cancel(ss->cache_thread);
+		ss->shutdown = true;
+		os_event_signal(ss->cache_event);
 		pthread_join(ss->cache_thread, NULL);
 	}
 
