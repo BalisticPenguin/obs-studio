@@ -487,7 +487,7 @@ static void evict_sources(struct slideshow2 *ss, DARRAY_size_t *evict,
 		/* If the source is NULL we have a logic error somewhere. */
 		assert(entries[entry_index].source != NULL);
 
-		da_push_back((*cleanup), entries[entry_index].source);
+		da_push_back((*cleanup), &entries[entry_index].source);
 		entries[entry_index].source = NULL;
 
 		size_t index = da_find(ss->cached_entries_set, &entry_index, 0);
