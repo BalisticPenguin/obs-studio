@@ -932,7 +932,11 @@ static void ss2_update(void *data, obs_data_t *settings)
 
 	ss->cx = cx;
 	ss->cy = cy;
-	set_cur_item(ss, 0);
+	if (ss->randomize) {
+		set_cur_item(ss, random_index(ss, SIZE_MAX));
+	} else {
+		set_cur_item(ss, 0);
+	}
 	ss->elapsed = 0.0f;
 	obs_transition_set_size(ss->transition, cx, cy);
 	obs_transition_set_alignment(ss->transition, OBS_ALIGN_CENTER);
@@ -970,7 +974,11 @@ static void ss2_restart(void *data)
 	lock_mutex(ss);
 
 	ss->elapsed = 0.0f;
-	set_cur_item(ss, 0);
+	if (ss->randomize) {
+		set_cur_item(ss, random_index(ss, SIZE_MAX));
+	} else {
+		set_cur_item(ss, 0);
+	}
 
 	obs_source_t *source = ss->entries.num > 0
 				       ? obtain_cached_source(ss, ss->cur_item)
