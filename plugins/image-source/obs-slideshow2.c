@@ -170,6 +170,9 @@ struct slideshow2 {
 	obs_hotkey_id prev_hotkey;
 };
 
+/* ------------------------------------------------------------------------- */
+/* Utilities */
+
 static void lock_mutex(struct slideshow2 *ss)
 {
 	pthread_mutex_lock(&ss->mutex);
@@ -184,7 +187,15 @@ static void unlock_mutex(struct slideshow2 *ss)
 	pthread_mutex_unlock(&ss->mutex);
 }
 
-static obs_source_t *get_transition(struct slideshow2 *ss)
+static int sort_size_t(const void *p1, const void *p2)
+{
+	return *((const size_t *)p1) - *((const size_t *)p2);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Obtain sources */
+
+static obs_source_t *obtain_transition(struct slideshow2 *ss)
 {
 	obs_source_t *tr;
 
@@ -195,6 +206,22 @@ static obs_source_t *get_transition(struct slideshow2 *ss)
 
 	return tr;
 }
+
+static obs_source_t *obtain_cached_source(struct slideshow2 *ss, size_t index)
+{
+	assert(ss->have_mutex);
+
+	if (index >= ss->entries.num)
+		return NULL;
+
+	struct entry *entry = &ss->entries.array[index];
+
+	obs_source_addref(entry->source);
+	return entry->source;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Manage files */
 
 static obs_source_t *create_source_from_file(const char *file)
 {
@@ -219,19 +246,7 @@ static void free_files(DARRAY_char_p *file_paths)
 }
 
 /* ------------------------------------------------------------------------- */
-
-static obs_source_t *obtain_cached_source(struct slideshow2 *ss, size_t index)
-{
-	assert(ss->have_mutex);
-
-	if (index >= ss->entries.num)
-		return NULL;
-
-	struct entry *entry = &ss->entries.array[index];
-
-	obs_source_addref(entry->source);
-	return entry->source;
-}
+/* Manage current index */
 
 static size_t random_index(struct slideshow2 *ss, size_t avoid)
 {
@@ -402,10 +417,8 @@ static void set_previous_item(struct slideshow2 *ss)
 	os_event_signal(ss->cache_event);
 }
 
-static int sort_size_t(const void *p1, const void *p2)
-{
-	return *((const size_t *)p1) - *((const size_t *)p2);
-}
+/* ------------------------------------------------------------------------- */
+/* Cache worker thread */
 
 static void update_cached_entries_set(struct slideshow2 *ss, DARRAY_size_t *set)
 {
@@ -614,66 +627,7 @@ static void *cache_thread(void *opaque)
 }
 
 /* ------------------------------------------------------------------------- */
-
-static const char *ss2_getname(void *unused)
-{
-	UNUSED_PARAMETER(unused);
-	return obs_module_text("SlideShow2");
-}
-
-static void add_file(DARRAY_char_p *new_files, const char *path)
-{
-	char *copied_path = bstrdup(path);
-	da_push_back((*new_files), &copied_path);
-}
-
-static bool valid_extension(const char *ext)
-{
-	if (!ext)
-		return false;
-	return astrcmpi(ext, ".bmp") == 0 || astrcmpi(ext, ".tga") == 0 ||
-	       astrcmpi(ext, ".png") == 0 || astrcmpi(ext, ".jpeg") == 0 ||
-	       astrcmpi(ext, ".jpg") == 0 || astrcmpi(ext, ".gif") == 0;
-}
-
-static inline bool item_valid(struct slideshow2 *ss)
-{
-	assert(ss->have_mutex);
-	return ss->entries.num > 0 && ss->cur_item < ss->entries.num;
-}
-
-static bool do_transition(struct slideshow2 *ss, bool to_null)
-{
-	assert(ss->have_mutex);
-	bool valid = item_valid(ss);
-
-	if (valid && ss->use_cut) {
-		obs_source_t *source = obtain_cached_source(ss, ss->cur_item);
-		if (!source) {
-			debug("No cached source, need to retry");
-			ss->retry_transition = true;
-			return false;
-		}
-		obs_transition_set(ss->transition, source);
-		obs_source_release(source);
-	} else if (valid && !to_null) {
-		obs_source_t *source = obtain_cached_source(ss, ss->cur_item);
-		if (!source) {
-			debug("No cached source, need to retry");
-			ss->retry_transition = true;
-			return false;
-		}
-		obs_transition_start(ss->transition, OBS_TRANSITION_MODE_AUTO,
-				     ss->tr_speed, source);
-		obs_source_release(source);
-	} else {
-		obs_transition_start(ss->transition, OBS_TRANSITION_MODE_AUTO,
-				     ss->tr_speed, NULL);
-	}
-
-	ss->retry_transition = false;
-	return true;
-}
+/* Entries management */
 
 static void clear_all_entries(struct slideshow2 *ss, DARRAY_entry *cleanup)
 {
@@ -731,6 +685,62 @@ static void update_entries(struct slideshow2 *ss, bool preload,
 			break;
 		}
 	}
+}
+
+/* ------------------------------------------------------------------------- */
+/* Transition management */
+
+static inline bool item_valid(struct slideshow2 *ss)
+{
+	assert(ss->have_mutex);
+	return ss->entries.num > 0 && ss->cur_item < ss->entries.num;
+}
+
+static bool do_transition(struct slideshow2 *ss, bool to_null)
+{
+	assert(ss->have_mutex);
+	bool valid = item_valid(ss);
+
+	if (valid && ss->use_cut) {
+		obs_source_t *source = obtain_cached_source(ss, ss->cur_item);
+		if (!source) {
+			debug("No cached source, need to retry");
+			ss->retry_transition = true;
+			return false;
+		}
+		obs_transition_set(ss->transition, source);
+		obs_source_release(source);
+
+	} else if (valid && !to_null) {
+		obs_source_t *source = obtain_cached_source(ss, ss->cur_item);
+		if (!source) {
+			debug("No cached source, need to retry");
+			ss->retry_transition = true;
+			return false;
+		}
+		obs_transition_start(ss->transition, OBS_TRANSITION_MODE_AUTO,
+				     ss->tr_speed, source);
+		obs_source_release(source);
+
+	} else {
+		obs_transition_start(ss->transition, OBS_TRANSITION_MODE_AUTO,
+				     ss->tr_speed, NULL);
+	}
+
+	ss->retry_transition = false;
+	return true;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Config update */
+
+static bool valid_extension(const char *ext)
+{
+	if (!ext)
+		return false;
+	return astrcmpi(ext, ".bmp") == 0 || astrcmpi(ext, ".tga") == 0 ||
+	       astrcmpi(ext, ".png") == 0 || astrcmpi(ext, ".jpeg") == 0 ||
+	       astrcmpi(ext, ".jpg") == 0 || astrcmpi(ext, ".gif") == 0;
 }
 
 static void ss2_update(void *data, obs_data_t *settings)
@@ -828,13 +838,14 @@ static void ss2_update(void *data, obs_data_t *settings)
 				dstr_copy(&dir_path, path);
 				dstr_cat_ch(&dir_path, '/');
 				dstr_cat(&dir_path, ent->d_name);
-				add_file(&new_files, dir_path.array);
+				da_push_back(new_files,
+					     bstrdup(dir_path.array));
 			}
 
 			dstr_free(&dir_path);
 			os_closedir(dir);
 		} else {
-			add_file(&new_files, path);
+			da_push_back(new_files, bstrdup(path));
 		}
 
 		obs_data_release(item);
@@ -957,92 +968,8 @@ static void ss2_update(void *data, obs_data_t *settings)
 	da_free(new_entries);
 }
 
-static void ss2_play_pause(void *data)
-{
-	struct slideshow2 *ss = data;
-
-	lock_mutex(ss);
-	ss->paused = !ss->paused;
-	ss->manual = ss->paused;
-	unlock_mutex(ss);
-}
-
-static void ss2_restart(void *data)
-{
-	struct slideshow2 *ss = data;
-
-	lock_mutex(ss);
-
-	ss->elapsed = 0.0f;
-	if (ss->randomize) {
-		set_cur_item(ss, random_index(ss, SIZE_MAX));
-	} else {
-		set_cur_item(ss, 0);
-	}
-
-	obs_source_t *source = ss->entries.num > 0
-				       ? obtain_cached_source(ss, ss->cur_item)
-				       : NULL;
-	obs_transition_set(ss->transition, source);
-	obs_source_release(source);
-
-	ss->stop = false;
-	ss->paused = false;
-
-	unlock_mutex(ss);
-}
-
-static void ss2_stop(void *data)
-{
-	struct slideshow2 *ss = data;
-
-	lock_mutex(ss);
-
-	ss->elapsed = 0.0f;
-	set_cur_item(ss, 0);
-
-	do_transition(ss, true);
-	ss->stop = true;
-	ss->paused = false;
-
-	unlock_mutex(ss);
-}
-
-static void ss2_next_slide(void *data)
-{
-	struct slideshow2 *ss = data;
-
-	lock_mutex(ss);
-
-	if (ss->entries.num == 0 ||
-	    obs_transition_get_time(ss->transition) < 1.0f) {
-		unlock_mutex(ss);
-		return;
-	}
-
-	set_next_item(ss);
-	do_transition(ss, false);
-
-	unlock_mutex(ss);
-}
-
-static void ss2_previous_slide(void *data)
-{
-	struct slideshow2 *ss = data;
-
-	lock_mutex(ss);
-
-	if (!ss->entries.num ||
-	    obs_transition_get_time(ss->transition) < 1.0f) {
-		unlock_mutex(ss);
-		return;
-	}
-
-	set_previous_item(ss);
-	do_transition(ss, false);
-
-	unlock_mutex(ss);
-}
+/* ------------------------------------------------------------------------- */
+/* Hotkeys */
 
 static void play_pause_hotkey(void *data, obs_hotkey_id id,
 			      obs_hotkey_t *hotkey, bool pressed)
@@ -1052,8 +979,12 @@ static void play_pause_hotkey(void *data, obs_hotkey_id id,
 
 	struct slideshow2 *ss = data;
 
-	if (pressed && obs_source_active(ss->source))
-		ss2_play_pause(ss);
+	if (pressed && obs_source_active(ss->source)) {
+		lock_mutex(ss);
+		ss->paused = !ss->paused;
+		ss->manual = ss->paused;
+		unlock_mutex(ss);
+	}
 }
 
 static void restart_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
@@ -1064,8 +995,28 @@ static void restart_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 
 	struct slideshow2 *ss = data;
 
-	if (pressed && obs_source_active(ss->source))
-		ss2_restart(ss);
+	if (pressed && obs_source_active(ss->source)) {
+		lock_mutex(ss);
+
+		ss->elapsed = 0.0f;
+		if (ss->randomize) {
+			set_cur_item(ss, random_index(ss, SIZE_MAX));
+		} else {
+			set_cur_item(ss, 0);
+		}
+
+		obs_source_t *source =
+			ss->entries.num > 0
+				? obtain_cached_source(ss, ss->cur_item)
+				: NULL;
+		obs_transition_set(ss->transition, source);
+		obs_source_release(source);
+
+		ss->stop = false;
+		ss->paused = false;
+
+		unlock_mutex(ss);
+	}
 }
 
 static void stop_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
@@ -1076,8 +1027,18 @@ static void stop_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 
 	struct slideshow2 *ss = data;
 
-	if (pressed && obs_source_active(ss->source))
-		ss2_stop(ss);
+	if (pressed && obs_source_active(ss->source)) {
+		lock_mutex(ss);
+
+		ss->elapsed = 0.0f;
+		set_cur_item(ss, 0);
+
+		do_transition(ss, true);
+		ss->stop = true;
+		ss->paused = false;
+
+		unlock_mutex(ss);
+	}
 }
 
 static void next_slide_hotkey(void *data, obs_hotkey_id id,
@@ -1091,8 +1052,20 @@ static void next_slide_hotkey(void *data, obs_hotkey_id id,
 	if (!ss->manual)
 		return;
 
-	if (pressed && obs_source_active(ss->source))
-		ss2_next_slide(ss);
+	if (pressed && obs_source_active(ss->source)) {
+		lock_mutex(ss);
+
+		if (ss->entries.num == 0 ||
+		    obs_transition_get_time(ss->transition) < 1.0f) {
+			unlock_mutex(ss);
+			return;
+		}
+
+		set_next_item(ss);
+		do_transition(ss, false);
+
+		unlock_mutex(ss);
+	}
 }
 
 static void previous_slide_hotkey(void *data, obs_hotkey_id id,
@@ -1106,8 +1079,29 @@ static void previous_slide_hotkey(void *data, obs_hotkey_id id,
 	if (!ss->manual)
 		return;
 
-	if (pressed && obs_source_active(ss->source))
-		ss2_previous_slide(ss);
+	if (pressed && obs_source_active(ss->source)) {
+		lock_mutex(ss);
+
+		if (!ss->entries.num ||
+		    obs_transition_get_time(ss->transition) < 1.0f) {
+			unlock_mutex(ss);
+			return;
+		}
+
+		set_previous_item(ss);
+		do_transition(ss, false);
+
+		unlock_mutex(ss);
+	}
+}
+
+/* ------------------------------------------------------------------------- */
+/* Source implementation */
+
+static const char *ss2_getname(void *unused)
+{
+	UNUSED_PARAMETER(unused);
+	return obs_module_text("SlideShow2");
 }
 
 static void ss2_destroy(void *data)
@@ -1188,7 +1182,7 @@ error:
 static void ss2_video_render(void *data, gs_effect_t *effect)
 {
 	struct slideshow2 *ss = data;
-	obs_source_t *transition = get_transition(ss);
+	obs_source_t *transition = obtain_transition(ss);
 
 	if (transition) {
 		obs_source_video_render(transition);
@@ -1303,7 +1297,7 @@ static bool ss2_audio_render(void *data, uint64_t *ts_out,
 			     size_t sample_rate)
 {
 	struct slideshow2 *ss = data;
-	obs_source_t *transition = get_transition(ss);
+	obs_source_t *transition = obtain_transition(ss);
 	bool success;
 
 	if (!transition)
