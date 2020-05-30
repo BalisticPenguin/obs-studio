@@ -839,7 +839,6 @@ static void read_config(obs_data_t *settings, struct slideshow2_config *config)
 	const char *behavior;
 	const char *slide_mode;
 	const char *load_mode;
-	bool preload;
 
 	/* ------------------------------------- */
 	/* get settings data */
@@ -878,7 +877,6 @@ static void read_config(obs_data_t *settings, struct slideshow2_config *config)
 	config->mode = (strcmp(load_mode, S_LOADMODE_ONDEMAND) == 0)
 			       ? SLIDESHOW_MODE_ON_DEMAND
 			       : SLIDESHOW_MODE_PRELOAD;
-	preload = config->mode == SLIDESHOW_MODE_PRELOAD;
 
 	if (strcmp(tr_name, "cut_transition") != 0) {
 		if (new_duration < 100)
@@ -914,7 +912,7 @@ static void ss2_update(void *data, obs_data_t *settings)
 	char *old_tr_name;
 	obs_source_t *new_tr = NULL;
 	obs_source_t *old_tr = NULL;
-	uint64_t mem_usage;
+	uint64_t mem_usage = 0;
 
 	/* ------------------------------------- */
 	/* get settings data */
