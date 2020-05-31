@@ -970,6 +970,7 @@ static void ss2_update(void *data, obs_data_t *settings)
 			set_cur_item(ss, 0);
 		}
 		ss->elapsed = 0.0f;
+		ss->paused = ss->config.manual;
 		obs_transition_set_size(ss->transition, new_config.cx,
 					new_config.cy);
 		obs_transition_set_alignment(ss->transition, OBS_ALIGN_CENTER);
@@ -1005,7 +1006,6 @@ static void play_pause_hotkey(void *data, obs_hotkey_id id,
 	if (pressed && obs_source_active(ss->source)) {
 		lock_mutex(ss);
 		ss->paused = !ss->paused;
-		ss->config.manual = ss->paused;
 		unlock_mutex(ss);
 	}
 }
@@ -1036,7 +1036,7 @@ static void restart_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 		obs_source_release(source);
 
 		ss->stop = false;
-		ss->paused = false;
+		ss->paused = ss->config.manual;
 
 		unlock_mutex(ss);
 	}
@@ -1072,7 +1072,7 @@ static void next_slide_hotkey(void *data, obs_hotkey_id id,
 
 	struct slideshow2 *ss = data;
 
-	if (!ss->config.manual)
+	if (!ss->paused)
 		return;
 
 	if (pressed && obs_source_active(ss->source)) {
@@ -1099,7 +1099,7 @@ static void previous_slide_hotkey(void *data, obs_hotkey_id id,
 
 	struct slideshow2 *ss = data;
 
-	if (!ss->config.manual)
+	if (!ss->paused)
 		return;
 
 	if (pressed && obs_source_active(ss->source)) {
@@ -1236,8 +1236,7 @@ static void ss2_video_tick(void *data, float seconds)
 		goto out;
 	}
 
-	if (ss->pause_on_deactivate || ss->config.manual || ss->stop ||
-	    ss->paused)
+	if (ss->pause_on_deactivate || ss->stop || ss->paused)
 		goto out;
 
 	/* ----------------------------------------------------- */
