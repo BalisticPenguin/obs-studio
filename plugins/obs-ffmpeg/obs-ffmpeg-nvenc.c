@@ -235,13 +235,29 @@ static bool nvenc_update(void *data, obs_data_t *settings)
 	enc->context->height = obs_encoder_get_height(enc->encoder);
 	enc->context->time_base = (AVRational){voi->fps_den, voi->fps_num};
 	enc->context->pix_fmt = obs_to_ffmpeg_video_format(info.format);
-	enc->context->colorspace = info.colorspace == VIDEO_CS_709
-					   ? AVCOL_SPC_BT709
-					   : AVCOL_SPC_BT470BG;
 	enc->context->color_range = info.range == VIDEO_RANGE_FULL
 					    ? AVCOL_RANGE_JPEG
 					    : AVCOL_RANGE_MPEG;
 	enc->context->max_b_frames = bf;
+
+	switch (info.colorspace) {
+	case VIDEO_CS_601:
+		enc->context->color_trc = AVCOL_TRC_SMPTE170M;
+		enc->context->color_primaries = AVCOL_PRI_SMPTE170M;
+		enc->context->colorspace = AVCOL_SPC_SMPTE170M;
+		break;
+	case VIDEO_CS_DEFAULT:
+	case VIDEO_CS_709:
+		enc->context->color_trc = AVCOL_TRC_BT709;
+		enc->context->color_primaries = AVCOL_PRI_BT709;
+		enc->context->colorspace = AVCOL_SPC_BT709;
+		break;
+	case VIDEO_CS_SRGB:
+		enc->context->color_trc = AVCOL_TRC_IEC61966_2_1;
+		enc->context->color_primaries = AVCOL_PRI_BT709;
+		enc->context->colorspace = AVCOL_SPC_BT709;
+		break;
+	}
 
 	if (keyint_sec)
 		enc->context->gop_size =
@@ -461,6 +477,7 @@ void nvenc_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, "psycho_aq", true);
 	obs_data_set_default_int(settings, "gpu", 0);
 	obs_data_set_default_int(settings, "bf", 2);
+	obs_data_set_default_bool(settings, "repeat_headers", false);
 }
 
 static bool rate_control_modified(obs_properties_t *ppts, obs_property_t *p,
@@ -560,6 +577,9 @@ obs_properties_t *nvenc_properties_internal(bool ffmpeg)
 			obs_module_text("NVENC.PsychoVisualTuning"));
 		obs_property_set_long_description(
 			p, obs_module_text("NVENC.PsychoVisualTuning.ToolTip"));
+		p = obs_properties_add_bool(props, "repeat_headers",
+					    "repeat_headers");
+		obs_property_set_visible(p, false);
 	}
 
 	obs_properties_add_int(props, "gpu", obs_module_text("GPU"), 0, 8, 1);

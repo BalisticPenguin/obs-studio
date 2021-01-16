@@ -114,11 +114,14 @@ static inline gs_color_format ConvertDXGITextureFormat(DXGI_FORMAT format)
 		return GS_R8;
 	case DXGI_FORMAT_R8G8_UNORM:
 		return GS_R8G8;
+	case DXGI_FORMAT_R8G8B8A8_TYPELESS:
 	case DXGI_FORMAT_R8G8B8A8_UNORM:
 		return GS_RGBA;
 	case DXGI_FORMAT_B8G8R8X8_UNORM:
+	case DXGI_FORMAT_B8G8R8X8_TYPELESS:
 		return GS_BGRX;
 	case DXGI_FORMAT_B8G8R8A8_UNORM:
+	case DXGI_FORMAT_B8G8R8A8_TYPELESS:
 		return GS_BGRA;
 	case DXGI_FORMAT_R10G10B10A2_UNORM:
 		return GS_R10G10B10A2;
@@ -490,6 +493,7 @@ struct gs_texture_2d : gs_texture {
 	gs_texture_2d(gs_device_t *device, ID3D11Texture2D *nv12,
 		      uint32_t flags);
 	gs_texture_2d(gs_device_t *device, uint32_t handle);
+	gs_texture_2d(gs_device_t *device, ID3D11Texture2D *obj);
 };
 
 struct gs_texture_3d : gs_texture {

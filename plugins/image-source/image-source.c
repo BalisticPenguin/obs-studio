@@ -160,12 +160,14 @@ static void image_source_tick(void *data, float seconds)
 
 	context->update_time_elapsed += seconds;
 
-	if (context->update_time_elapsed >= 1.0f) {
-		time_t t = get_modified_timestamp(context->file);
-		context->update_time_elapsed = 0.0f;
+	if (obs_source_showing(context->source)) {
+		if (context->update_time_elapsed >= 1.0f) {
+			time_t t = get_modified_timestamp(context->file);
+			context->update_time_elapsed = 0.0f;
 
-		if (context->file_timestamp != t) {
-			image_source_load(context);
+			if (context->file_timestamp != t) {
+				image_source_load(context);
+			}
 		}
 	}
 
@@ -209,13 +211,14 @@ static void image_source_tick(void *data, float seconds)
 }
 
 static const char *image_filter =
-	"All formats (*.bmp *.tga *.png *.jpeg *.jpg *.gif *.psd);;"
+	"All formats (*.bmp *.tga *.png *.jpeg *.jpg *.gif *.psd *.webp);;"
 	"BMP Files (*.bmp);;"
 	"Targa Files (*.tga);;"
 	"PNG Files (*.png);;"
 	"JPEG Files (*.jpeg *.jpg);;"
 	"GIF Files (*.gif);;"
 	"PSD Files (*.psd);;"
+	"WebP Files (*.webp);;"
 	"All Files (*.*)";
 
 static obs_properties_t *image_source_properties(void *data)
@@ -280,12 +283,14 @@ extern struct obs_source_info slideshow_info;
 extern struct obs_source_info slideshow2_info;
 extern struct obs_source_info color_source_info_v1;
 extern struct obs_source_info color_source_info_v2;
+extern struct obs_source_info color_source_info_v3;
 
 bool obs_module_load(void)
 {
 	obs_register_source(&image_source_info);
 	obs_register_source(&color_source_info_v1);
 	obs_register_source(&color_source_info_v2);
+	obs_register_source(&color_source_info_v3);
 	obs_register_source(&slideshow_info);
 	obs_register_source(&slideshow2_info);
 	return true;
