@@ -63,9 +63,6 @@
 
 extern uint64_t image_source_get_memory_usage(void *data);
 
-#define BYTES_TO_MBYTES (1024 * 1024)
-#define MAX_MEM_USAGE (400 * BYTES_TO_MBYTES)
-
 struct image_file_data {
 	char *path;
 	obs_source_t *source;
@@ -375,9 +372,6 @@ static void ss_update(void *data, obs_data_t *settings)
 		}
 
 		obs_data_release(item);
-
-		if (ss->mem_usage >= MAX_MEM_USAGE)
-			break;
 	}
 
 	/* ------------------------------------- */
